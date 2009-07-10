@@ -1,6 +1,9 @@
 
 /*
  * Copyright (C) Weibin Yao
+ * Email: yaoweibin@gmail.com
+ * Licence: the same as Nginx
+ * Version: $Id$
  */
 
 
