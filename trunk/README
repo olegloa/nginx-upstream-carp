@@ -1,7 +1,7 @@
 nginx_upstream_carp
 -------
 
-This module achieves partial CARP(Cache Array Routing Protocol) support in nginx upstream module. It chooses the backend server with a steady order. The same URL will always be forward to the backend with the same order when failure occurs. The score is calculated from server's weight and hash value of server name and URL. Detail informatin is in http://icp.ircache.net/carp.txt. This module do not support Array Membership Table. All the weight value are from the upstream server's weight.
+This module achieves partial CARP(Cache Array Routing Protocol) support in nginx upstream module. It chooses the backend server with a steady order. The same URL will always be forward to the backend with the same order when failure occurs. The score is calculated from server's weight and hash value of server name and URL. Detail information is in http://icp.ircache.net/carp.txt. This module do not support Array Membership Table. All the weight value are from the upstream server's weight.
 
 INSTALLATION
     
