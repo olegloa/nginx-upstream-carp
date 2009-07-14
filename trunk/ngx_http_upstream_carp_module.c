@@ -40,25 +40,32 @@ typedef struct {
 
 } ngx_http_upstream_carp_peer_t;
 
+typedef struct {
+    ngx_array_t                     *lengths;
+    ngx_array_t                     *values;
+
+    ngx_str_t                        carp_str;
+} ngx_http_upstream_carp_str_init_t;
 
 typedef struct ngx_http_upstream_carp_peers_s  ngx_http_upstream_carp_peers_t;
 
 struct ngx_http_upstream_carp_peers_s {
-    ngx_uint_t                      single;        /* unsigned  single:1; */
-    ngx_uint_t                      number;
-    ngx_uint_t                      weight_total;
-    ngx_uint_t                      last_cached;
+    ngx_http_upstream_carp_str_init_t *hash_str;
 
- /* ngx_mutex_t                    *mutex; */
-    ngx_connection_t              **cached;
+    ngx_uint_t                         single;        /* unsigned  single:1; */
+    ngx_uint_t                         number;
+    ngx_uint_t                         weight_total;
+    ngx_uint_t                         last_cached;
 
-    ngx_str_t                      *name;
+ /* ngx_mutex_t                       *mutex; */
+    ngx_connection_t                 **cached;
 
-    ngx_http_upstream_carp_peers_t *next;
+    ngx_str_t                         *name;
 
-    ngx_http_upstream_carp_peer_t   peer[1];
+    ngx_http_upstream_carp_peers_t    *next;
+
+    ngx_http_upstream_carp_peer_t      peer[1];
 };
-
 
 typedef struct {
     ngx_http_upstream_carp_peers_t *peers;
@@ -97,7 +104,7 @@ ngx_http_upstream_get_peer(ngx_http_upstream_carp_peer_data_t *ucpd);
 static ngx_command_t  ngx_http_upstream_carp_commands[] = {
 
     { ngx_string("carp"),
-      NGX_HTTP_UPS_CONF|NGX_CONF_NOARGS,
+      NGX_HTTP_UPS_CONF|NGX_CONF_TAKE1|NGX_CONF_NOARGS,
       ngx_http_upstream_carp,
       0,
       0,
@@ -217,6 +224,7 @@ ngx_http_upstream_init_carp(ngx_conf_t *cf,
             return NGX_ERROR;
         }
 
+        peers->hash_str = us->peer.data;
         peers->single = (n == 1);
         peers->number = n;
         peers->name = &us->host;
@@ -337,8 +345,10 @@ ngx_http_upstream_init_carp_peer(ngx_http_request_t *r,
 {
     double                               high_score;
     ngx_uint_t                           i, n, hash, combined_hash;
+    ngx_str_t                            val;
     ngx_http_upstream_carp_peer_data_t  *ucpd;
     ngx_http_upstream_carp_peer_t       *peer;
+    ngx_http_upstream_carp_str_init_t   *init_str;
 
     ucpd = r->upstream->peer.data;
 
@@ -351,23 +361,37 @@ ngx_http_upstream_init_carp_peer(ngx_http_request_t *r,
         r->upstream->peer.data = ucpd;
     }
     ucpd->peers = us->peer.data;
+    init_str = ucpd->peers->hash_str;
 
-    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "carp# start, upstream:\"%V\", number:%ui, weight: %ui ",
+    ngx_log_debug4(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "carp# start, upstream:\"%V\", number:%ui, "
+                   "weight: %ui, carp_str: \"%V\" ",
                    ucpd->peers->name, 
                    ucpd->peers->number,
-                   ucpd->peers->weight_total);
+                   ucpd->peers->weight_total, 
+                   &init_str->carp_str);
+
+    val.len = 0;
+    if (init_str->lengths != NULL && init_str->values != NULL) {
+        if (ngx_http_script_run(r, &val, init_str->lengths->elts, 
+                    0, init_str->values->elts) == NULL) {
+            return NGX_ERROR;
+        }
+    } 
+
+    if (val.len == 0) {
+        val.data = r->uri.data;
+        val.len = r->uri.len;
+    }
 
     hash = 0;
-    for (i = 0; i < r->unparsed_uri.len; i++) {
-        hash += ROTATE_LEFT(hash, 19) + r->unparsed_uri.data[i];
+    for (i = 0; i < val.len; i++) {
+        hash += ROTATE_LEFT(hash, 19) + val.data[i];
     }
     ucpd->user_hash = hash;
-    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "carp# user_hash: %ui from uri:\"%V\", %V",
-                   ucpd->user_hash,
-                   &r->unparsed_uri,
-                   &r->uri);
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "carp# user_hash: %ui from string:\"%V\"",
+                   ucpd->user_hash, &val);
 
     high_score = 0.0;
     n = 0;
@@ -505,10 +529,9 @@ ngx_http_upstream_get_carp_peer(ngx_peer_connection_t *pc, void *data)
                     /* temporary unavailable */
                     peer->temp_down = 1;
 
-                } else {
-                    ucpd->tried[n] |= m;
-                }
+                } 
 
+                ucpd->tried[n] |= m;
                 pc->tries--;
             }
 
@@ -743,9 +766,48 @@ ngx_http_upstream_save_carp_peer_session(ngx_peer_connection_t *pc,
 static char *
 ngx_http_upstream_carp(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_http_upstream_srv_conf_t  *uscf;
+    ngx_uint_t                         n;
+    ngx_str_t                         *value, *url;
+    ngx_http_script_compile_t          sc;
+    ngx_http_upstream_srv_conf_t      *uscf;
+    ngx_http_upstream_carp_str_init_t *hash_str;
 
     uscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
+
+    hash_str = ngx_pcalloc(cf->pool, sizeof(ngx_http_upstream_carp_str_init_t));
+    if (hash_str == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (cf->args->nelts > 1) {
+        value = cf->args->elts;
+
+        url = &value[1];
+
+        n = ngx_http_script_variables_count(url);
+
+        if (n) {
+            ngx_memzero(&sc, sizeof(ngx_http_script_compile_t));
+
+            sc.cf = cf;
+            sc.source = url;
+            sc.lengths = &hash_str->lengths;
+            sc.values = &hash_str->values;
+            sc.variables = n;
+            sc.complete_lengths = 1;
+            sc.complete_values = 1;
+
+            if (ngx_http_script_compile(&sc) != NGX_OK) {
+                return NGX_CONF_ERROR;
+            }
+        }
+
+        hash_str->carp_str.data = ngx_pstrdup(cf->pool, url);
+        hash_str->carp_str.len = url->len;
+    }
+
+    /* It's a trick, avoid to modify the core upstream souce code. */
+    uscf->peer.data = hash_str;
 
     uscf->peer.init_upstream = ngx_http_upstream_init_carp;
 
