@@ -38,6 +38,9 @@ typedef struct {
     unsigned                        down;        
     unsigned                        temp_down;        
 
+#if (NGX_HTTP_SSL)
+    ngx_ssl_session_t              *ssl_session;   /* local to a process */
+#endif
 } ngx_http_upstream_carp_peer_t;
 
 typedef struct {
