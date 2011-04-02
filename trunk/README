@@ -5,7 +5,7 @@ This module achieves partial CARP(Cache Array Routing Protocol) support in nginx
 
 INSTALLATION
     
-1.This module needs libmath++. 
+1.This module needs libm. 
   
 2.compile nginx with the following addition option:
 

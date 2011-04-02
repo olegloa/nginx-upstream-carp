@@ -3,7 +3,7 @@ ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_incs="#include <math.h>"
 ngx_feature_path=
-ngx_feature_libs="-lmath++"
+ngx_feature_libs="-lm"
 ngx_feature_test="double dd;floor(dd);"
 . auto/feature
 
@@ -14,7 +14,7 @@ if [ $ngx_found = yes ]; then
     NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_upstream_carp_module.c"
 else 
     cat << END
-    $0: error: the upstream carp addon requires the libmath++ library.
+    $0: error: the upstream carp addon requires the libm library.
 END
     exit 1
 fi
