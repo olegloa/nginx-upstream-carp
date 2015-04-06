@@ -1,0 +1,44 @@
+# nginx\_upstream\_carp #
+
+---
+
+
+This module achieves partial CARP(Cache Array Routing Protocol) support in nginx upstream module. It chooses the backend server with a steady order. The same URL will always be forward to the backend with the same order when failure occurs. The score is calculated from server's weight and hash value of server name and URL. Detail information is in http://icp.ircache.net/carp.txt. This module do not support Array Membership Table. All the weight value are from the upstream server's weight.
+
+## INSTALLATION ##
+
+  * This module needs libm.
+
+  * compile nginx with the following addition option:
+```
+  --add-module=/path/to/this/directory
+```
+
+## EXAMPLE ##
+```
+upstream backend {
+    server 192.168.0.100 weight=1;
+    server 192.168.0.101 weight=2;
+    server 192.168.0.102 weight=3;
+    server 192.168.0.103 weight=4;
+
+    carp $scheme://$host:$server_port$request_uri;
+}
+```
+
+## DIRECTIVES ##
+
+> ### carp ###
+
+> syntax: carp `[`hash\_string`]`
+
+> default: $uri
+
+> context: upstream
+
+> description: Enable the nginx\_upstream\_carp module and set the string to be hashed. The hash\_string can contain several variables. With the hash value, the request will be routed to the highest score backend server.
+
+
+Note: This is a third-party module. And you need careful test before using this module in your production environment.
+
+Questions/patches may be directed to Weibin Yao, yaoweibin@gmail.com.
